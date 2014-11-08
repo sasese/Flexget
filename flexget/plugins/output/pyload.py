@@ -160,17 +160,10 @@ class PluginPyLoad(object):
                     name = entry['title']
                     log.error('Error rendering jinja event: %s' % e)
 
-                post = {'name': "'%s'" % name.encode("ascii", "ignore"),
-                        'links': str(urls),
-                        'dest': dest,
-                        'session': session}
-
-                pid = query_api(api, "addPackage", post).text
-                log.debug('added package pid: %s' % pid)
-
                 # Set Folder
                 folder = config.get('folder', self.DEFAULT_FOLDER)
                 folder = entry.get('path', folder)
+                
                 if folder:
                     # If folder has jinja template, render it
                     try:
@@ -178,12 +171,21 @@ class PluginPyLoad(object):
                     except RenderError as e:
                         folder = self.DEFAULT_FOLDER
                         log.error('Error rendering jinja event: %s' % e)
-                    # set folder with api
-                    data = json.dumps({'folder': folder})
-                    query_api(api, "setPackageData", {'pid': pid, 'data': data, 'session': session})
+                    folder = json.dumps(folder)
+
+                # Add Package via API
+                post = {'name': "'%s'" % name.encode("ascii", "ignore"),
+                        'links': str(urls),
+                        'dest': dest,
+                        'folder': folder,
+                        'session': session}
+
+                pid = query_api(api, "addPackage", post).text
+                log.debug('added package pid: %s' % pid)
 
             except Exception as e:
                 entry.fail(str(e))
+
 
     def get_session(self, config):
         url = config.get('api', self.DEFAULT_API)
