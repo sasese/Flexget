@@ -8,6 +8,7 @@ log = logging.getLogger('!! parse_urls !!')
 log.verbose('!! parse_urls !!') 
 
 # AUTO-RUN CODE
+    # Set priority to run plugin as the last in input
     # @plugin.priority(175)
     # def on_task_filter(self, task, config):
 
