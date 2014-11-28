@@ -9,7 +9,7 @@ log.verbose('!! parse_urls !!')
 
 # AUTO-RUN CODE
     # Set priority to run plugin as the last in input
-    # @plugin.priority(175)
+    # @plugin.priority(?)
     # def on_task_filter(self, task, config):
 
 def ParseURLs(): # options: none, for now
@@ -18,10 +18,12 @@ def ParseURLs(): # options: none, for now
 
 # INITIALIZE
     # Copy task.entries to parse.entries
+    parse.entries = copy.deepcopy(task.entries)
     # Reset task.entries to empty
+    task.entries.clear()
     
 # MAIN
-    # for each entry in parse.entries
+    for each entry in parse.entries
         # for each url in entry
             # parse url into parsed_urls
             # for each url in parsed_urls
