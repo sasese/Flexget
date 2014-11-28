@@ -14,7 +14,7 @@ log.verbose('!! cleanup_input !!')
 
 def CleanupInput():
 # SITUATION
-    # Meta_input plugins have created fields.
+    # Metainfo plugins have created fields.
 
 # OPTIONS
     # 'group' (no, quality, release)
