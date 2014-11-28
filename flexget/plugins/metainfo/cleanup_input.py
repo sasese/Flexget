@@ -8,7 +8,7 @@ log = logging.getLogger('!! cleanup_input !!')
 log.verbose('!! cleanup_input !!') 
 
 # AUTO-RUN CODE
-    # Set priority to run plugin as the last in meta_input
+    # Set priority to run plugin as the last in metainfo
         # @plugin.priority(?)
         # def on_task_filter(self, task, config):
 
