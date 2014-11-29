@@ -41,7 +41,7 @@ def CleanupInput():
     
     # 'decypher' (to do) (no, guess, strict)
         # Not yet implemented function, intended to obtain the names of files whose
-        # URLs are too cryptic to parse, such as uptobo.com/u73he7ehe82 instead of
+        # URLs are too cryptic to parse, such as uptobox.com/u73he7ehe82 instead of
         # rapidgator.com/abc.../birdwatching.vigilante.s01e01.hdtv.x264.rar, either by
             # guess, using modifications of the RSS and parse_urls plugins to add the
             # name of originating items, thus providing clues, or;
