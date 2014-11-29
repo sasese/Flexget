@@ -58,10 +58,13 @@ def CleanupInput():
 
 # INITIALIZE
     # Copy task.entries to cleanup.entries
+    cleanup.entries = copy.deepcopy(task.entries)
     # Reset task.entries to empty
+    task.entries.clear()
     
 # MAIN
     # for each entry in cleanup.entries
+    for each entry in cleanup.entries
         # needed? create group.entries
             # needed ? move all instances of entry.series_name and .episode_id from cleanup.entries to group.entries
             # needed ? for each entry in group.entries
