@@ -20,10 +20,13 @@ def ParseURLs(): # options: none, for now
 
 # INITIALIZE
     # Copy task.entries to parse.entries
-    # Reset task.entries to empty
-    
+    parse.entries = copy.deepcopy(task.entries)
+    # Reset task.entries
+    task.entries.clear()
+
 # MAIN
     # for each entry in parse.entries
+    for each entry in parse.entries
         # for each url in entry
             # parse url into parsed_urls
             # for each url in parsed_urls
