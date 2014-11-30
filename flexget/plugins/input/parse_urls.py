@@ -44,7 +44,7 @@ def ParseURLs(): # options: none, for now
     
 def parseURLs(self, html=None, url=None):
     """
-    Copied from pyLoad API module's parseURLs
+    Copied from pyLoad's API module's parseURLs.
     Parses html content or any arbitaty text for links and returns result of `checkURLs`
     
     :param html: html source
