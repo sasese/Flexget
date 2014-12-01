@@ -1,12 +1,11 @@
 from __future__ import unicode_literals, division, absolute_import
 import logging
+import urllib2
 
 from urlparse import urlparse
 
 from flexget import plugin
 from flexget.event import event
-
-urlmatcher = re.compile(r"((https?|ftps?|xdcc|sftp):((//)|(\\\\))+[\w\d:#@%/;$()~_?\+\-=\\\.&]*)", re.IGNORECASE)
 
 log = logging.getLogger('!! parse_urls !!')
 log.verbose('!! parse_urls !!') 
@@ -16,7 +15,6 @@ log.verbose('!! parse_urls !!')
         # @plugin.priority(?)
         # def on_task_filter(self, task, config):
 
-def ParseURLs(): # options: none, for now
 # SITUATION
     # Input plugins have created task.entries
 
@@ -42,27 +40,16 @@ def ParseURLs(): # options: none, for now
 # CONCLUDE
     # Clean-up
     
-def parseURLs(self, html=None, url=None):
+def parseURLs(url, accept="all", reject="none"):
     """
-    Copied from pyLoad's API module's parseURLs.
-    Parses html content or any arbitaty text for links and returns result of `checkURLs`
-    
-    :param html: html source
-    :return:
+    Parses a URL for URLs;
+    optionally filters any parsed URLs and;
+    returns the results.
     """
     
-    urls = []
-    
-    if html:
-        urls += [x[0] for x in urlmatcher.findall(html)]
-        
-    if url:
-        page = getURL(url)
-        urls += [x[0] for x in urlmatcher.findall(page)]
-        
-    # remove duplicates
-    return self.checkURLs(set(urls))
-
+    try: urllib2.urlopen(req)
+    except URLError as e:
+        log.error(e.reason)
 
     @event('plugin.register')
     def register_plugin():
