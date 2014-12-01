@@ -44,8 +44,14 @@ def CleanupInput():
         # URLs are too cryptic to parse, such as uptobox.com/u73he7ehe82 instead of
         # rapidgator.com/abc.../birdwatching.vigilante.s01e01.hdtv.x264.rar, either by
             # guess, using modifications of the RSS and parse_urls plugins to add the
-            # name of originating items, thus providing clues, or;
-            # strict(ly), parsing an entry's URL directly or querying it via a site's API. 
+                # name of originating items, thus providing clues, or;
+            # strict(ly), parsing an entry's URL directly or querying it via a site's API.
+                # As for parsing, oboom and rockfile(?) seem to have the names of the files
+                # relatively available in the page source, even when hidden in the browser.
+                # A search for the series name, tolerant of periods, may usually find the
+                # filename. Some attention would be required to deal discern a potential
+                # potential mention of the originating Web page, from a link to the file
+                # and redundancy to reduce that or a direct filename to acceptable input.
     
     schema = {
         'type': ['string', 'object'],
