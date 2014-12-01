@@ -1,6 +1,5 @@
 from __future__ import unicode_literals, division, absolute_import
 import logging
-import urllib2
 
 from urlparse import urlparse
 
@@ -42,6 +41,13 @@ log.verbose('!! parse_urls !!')
     # Clean-up
     
 def parseURLs(url, accept="all", reject="none"):
+    # While this could be coded in-place, it might also be accomplished using the existing
+    # html input module, which already has much of the functionality. The size of the module
+    # when compared to pyLoad's much shorter parseURLs function, brute-parsing with a RegEx,
+    # does raise some doubts about speed, as its seeming reliance on href to detect URLs does about efficacy.
+    
+    # As all URLs upon inspection of messy feeds such as sceper.ws and scenescource.me seem to be
+    # contained within href, BeautifulSoup may indeed offer a simple parsing solution.
     """
     Parses a URL for URLs;
     optionally filters any parsed URLs;
@@ -59,9 +65,6 @@ def parseURLs(url, accept="all", reject="none"):
     Patterns may be specified in config.yaml as (part of) a template.
     """
     
-    try: urllib2.urlopen(req)
-    except URLError as e:
-        log.error(e.reason)
 
     @event('plugin.register')
     def register_plugin():
