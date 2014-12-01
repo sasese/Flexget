@@ -39,7 +39,7 @@ def CleanupInput():
         # entry: Birdwatching Vigilante S01E01 HDTV x264 - FQM
             # etc...
     
-    # 'decypher' (to do) (no, guess, strict)
+    # 'decipher' (to do) (no, guess, strict)
         # Not yet implemented function, intended to obtain the names of files whose
         # URLs are too cryptic to parse, such as uptobox.com/u73he7ehe82 instead of
         # rapidgator.com/abc.../birdwatching.vigilante.s01e01.hdtv.x264.rar, either by
@@ -57,7 +57,7 @@ def CleanupInput():
         'type': ['string', 'object'],
         'properties': {
             'group': {'type': 'string'},
-            'decypher': {'type': 'string'}
+            'decipher': {'type': 'string'}
         },
         'required': ['group']
     }
