@@ -2,18 +2,41 @@ from __future__ import unicode_literals, division, absolute_import
 import datetime
 import logging
 import random
+import re
+import urlparse
 
 from sqlalchemy import Column, Integer, DateTime, Unicode, Index
 
-from flexget import options, plugin
+from flexget import options, plugin, validator
 from flexget.event import event
 from flexget.plugin import get_plugin_by_name, PluginError, PluginWarning
 from flexget import db_schema
+from flexget.config_schema import one_or_more
 from flexget.utils.tools import parse_timedelta, multiply_timedelta
-from flexget.plugins.input.html import InputHtml
+from flexget.utils.soup import get_soup
 
 log = logging.getLogger('parse_urls')
 Base = db_schema.versioned_base('parse_urls', 0)
+
+
+'''
+Notes
+
+General:
+This plugin is an assemblage of the discover and html input plugins, parsing candidate entries
+provided by input plugins for URLs, filtering those if specified, and creating unified entries
+per title attaching the parsed URLs.
+
+To do:
+Major: Work out ways to avoid flooding sites with parse requests and speed performance. Step one
+       will be reliable caching of parsed entries for re-use across tasks, and tracking task results
+       on those entries, to avoid parsing any item more than needed.
+       
+Considerations:
+Major: All other plugins will be unaware of the new values ('parse_urls' and 'parsed_urls').
+       Even if existing values were recycled (such as 'url' and 'urls') their altered nature
+       would remain unused, without recoding of plugins.
+'''
 
 
 class Parse_URLsEntry(Base):
@@ -41,51 +64,49 @@ def db_cleanup(session):
     for de in session.query(Parse_URLsEntry).filter(Parse_URLsEntry.last_execution <= value).all():
         log.debug('deleting %s' % de)
         session.delete(de)
-    
-    
-class Parse_URLs(InputHtml):
+
+
+class Parse_URLs( object):
     """
     Parse URLs based on other inputs material.
 
     Example::
 
       parse_urls:
-        input:
-          - emit_series: yes
-        from:
-          - piratebay
-        interval: [1 hours|days|weeks]
-        ignore_estimations: [yes|no]
+        inputs:
+          - rss:
+              url: http://example.com/feed
+              group_links: yes
+        links_re:
+          - example\.com
     """
-
+    
     schema = {
-        'type': 'object',
-        'properties': {
-            'input': {'type': 'array', 'items': {
-                'allOf': [{'$ref': '/schema/plugins?phase=input'}, {'maxProperties': 1, 'minProperties': 1}]
-            }},
-            'from': {'type': 'array', 'items': {
-                'allOf': [{'$ref': '/schema/plugins?group=search'}, {'maxProperties': 1, 'minProperties': 1}]
-            }},
-            'interval': {'type': 'string', 'format': 'interval', 'default': '5 hours'},
-            'ignore_estimations': {'type': 'boolean', 'default': False},
-            'limit': {'type': 'integer', 'minimum': 1}
-        },
-        'required': ['input'],
-        'additionalProperties': False
+        'oneOf': [
+            {'type': 'object',
+                'properties': {
+                    'inputs': {'type': 'array', 'items': {
+                        'allOf': [{'$ref': '/schema/plugins?phase=input'}, {'maxProperties': 1, 'minProperties': 1}]
+                    }},
+                    'links_re': one_or_more({'type': 'string'}),
+                },
+                'additionalProperties': False
+             }
+        ]
     }
 
     def execute_inputs(self, config, task):
         """
         :param config: Parse_URLs config
         :param task: Current task
-        :return: List of pseudo entries created by inputs under `input` configuration
+        :return: List of pseudo entries created by inputs under `inputs` configuration
         """
         entries = []
         entry_titles = set()
         entry_urls = set()
-        # run inputs
-        for item in config['input']:
+        
+        # Get candidate entries from plugins
+        for item in config['inputs']:
             for input_name, input_config in item.iteritems():
                 input = get_plugin_by_name(input_name)
                 if input.api_ver == 1:
@@ -100,19 +121,40 @@ class Parse_URLs(InputHtml):
                     log.warning('Input %s did not return anything' % input_name)
                     continue
 
+                # For each candidate
                 for entry in result:
-                    urls = ([entry['url']] if entry.get('url') else []) + entry.get('urls', [])
-                    if any(url in entry_urls for url in urls):
-                        log.debug('URL for `%s` already in entry list, skipping.' % entry['title'])
+                    
+                    # Reject if its index page repeats that of a previous candidate
+                    if entry['url'] in entry_urls:
+                        log.verbose('Encountered a duplicate index URL. Rejecting this instance of %$.' % (entry['title']))
                         continue
 
+                    # Attach its index page separately
+                    entry['parse_urls'] = [entry['url']]
+                    
+                    # In case of an identically named candidate later
                     if entry['title'] in entry_titles:
-                        log.verbose('Ignored duplicate title `%s`' % entry['title'])    # TODO: should combine?
-                        continue
+                        entry_title = entry['title']
+                        entry_url = entry['url']
+                        
+                        # Attach its index page to the first candidate
+                        for entry in entries:
+                            if entry['title'] == entry_title:
+                                entry['parse_urls'].append(entry_url)
+                                log.verbose('Encountered another instance of %s. Folding it into the existing entry.' % entry_title)
+                                
+                                # And reject the identically named candidate
+                                break
+                            else: continue
 
-                    entries.append(entry)
-                    entry_titles.add(entry['title'])
-                    entry_urls.update(urls)
+                    # Keep the candidate
+                    else:
+                        entries.append(entry)
+                        
+                        # Note its title and URL for comparison
+                        entry_titles.add(entry['title'])
+                        entry_urls.add(entry['url'])
+                        
         return entries
 
     def execute_parsing(self, task, config, entries): # added 'task' to accommodate html.py's requirements
@@ -121,36 +163,39 @@ class Parse_URLs(InputHtml):
         :param entries: List of pseudo entries to parse
         :return: List of entries found by parsing
         """
-
-        result = []
+        
+        # For each entry
         for index, entry in enumerate(entries):
             log.verbose('Parsing `%s` (%i of %i)' %
                         (entry['title'], index + 1, len(entries)))
-            try:
-                parse_results = self._request_url(task, config, entry['url'], None) # 'task' is passed along here
-                if not parse_results:
-                    log.debug('No results from %s' % entry['title'])
-                    entry.complete()
-                    continue
-                log.debug('Parsed %s entries from %s' %  (len(parse_results), entry['title']))
-                if config.get('limit'):
-                    parse_results = sorted(parse_results, reverse=True,
-                                            key=lambda x: x.get('search_sort'))[:config['limit']]
-                for e in parse_results:
-                    e['parse_urls_from'] = entry['title']
-                    e['parse_urls_with'] = entry['title']
-                    e.on_complete(self.entry_complete, query=entry, parse_results=parse_results)
+            
+            # Create container for parsed URLs
+            entry['parsed_urls'] = []
+                
+            # Parse each index page for URLs
+            for url in entry['parse_urls']:
+                page = task.requests.get(url) # This is where task is invoked
+                log.debug('Response: %s (%s)' % (page.status_code, page.reason))
+                soup = get_soup(page.content)
+                
+                # Filter each URL
+                for link in soup.find_all('a'):
+                    regexps = config.get('links_re', None)
+                    if regexps:
+                        accept = False
+                        for regexp in regexps:
+                            if re.search(regexp, link['href']):
+                                accept = True
+                                log.debug('Accepted %s' % (link['href']))
+                        if not accept:
+                            log.debug('Rejected %s' % (link['href']))
+                            continue
+                    
+                    # Add accepted URLs
+                    entry['parsed_urls'].append(link['href'])
 
-                result.extend(parse_results)
-
-            except PluginWarning as e:
-                log.verbose('No results from %s: %s' % (entry['title'], e))
-                entry.complete()
-            except PluginError as e:
-                log.error('Error searching with %s: %s' % (entry['title'], e))
-                entry.complete()
-
-        return sorted(result, reverse=True, key=lambda x: x.get('search_sort'))
+        #return sorted(result, reverse=True, key=lambda x: x.get('search_sort'))
+        return entries
 
     def entry_complete(self, entry, query=None, parse_results=None, **kwargs):
         if entry.accepted:
