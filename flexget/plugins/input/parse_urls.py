@@ -62,7 +62,6 @@ class Parse_URLs(object):
                         'allOf': [{'$ref': '/schema/plugins?phase=input'}, {'maxProperties': 1, 'minProperties': 1}]
                     }},
                     'links_re': one_or_more({'type': 'string'}),
-
                     'all_entries': {'type': 'boolean'},                },
                 'additionalProperties': False
              }
@@ -81,7 +80,6 @@ class Parse_URLs(object):
         :param task: Current task
         :return: List of pseudo entries created by inputs under `inputs` configuration
         """
-        cache = []
         entries = []
         entry_titles = set()
         entry_urls = set()
@@ -103,36 +101,36 @@ class Parse_URLs(object):
                     continue
 
                 if not config.get('all_entries', self.DEFAULT_ALL_ENTRIES):
-                    cache = task.simple_persistence.get('parse_urls_cache')
+                    cache = task.simple_persistence.get('parse_urls_cache', [])
                 failed = self.backlog.instance.get_injections(task)
 
-                # For each candidate,
+                # Each candidate,
                 for entry in candidate_entries:
 
-                    # reject if its index page repeats that in a previous run, unless it failed,
+                    # whose index page repeats that in a previous run, unless it failed,
                     if entry['url'] not in cache or entry['url'] in failed:
 
-                        # or if it repeats that of a previous candidate in this run.
+                        # or repeats that of a previous candidate in this run, should be rejected.
                         if entry['url'] in entry_urls:
                             log.verbose('Encountered a duplicate index URL. Rejecting this instance of %$.' % (entry['title']))
                             continue
 
-                        # Attach its index page separately,
+                        # If accepted, attach its index page separately,
                         entry['parse_urls'] = [entry['url']]
 
-                        # in case of an identically named candidate later.
+                        # so that in case of an identically named candidate later
                         if entry['title'] in entry_titles:
                             entry_title = entry['title']
                             entry_url = entry['url']
 
-                            # If so, its index page to the first candidate
+                            # its index page may be attached to the first candidate
                             for entry in entries:
                                 if entry['title'] == entry_title:
                                     entry['parse_urls'].append(entry_url)
                                     entry_urls.add(entry_url)
                                     log.verbose('Encountered another instance of %s. Folding it into the existing entry.' % entry_title)
 
-                                    # and reject the identically named candidate.
+                                    # making the duplicate candidate superfluous
                                     break
                                 else: continue
 
