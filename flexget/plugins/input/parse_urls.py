@@ -21,13 +21,13 @@ provided by input plugins for URLs, filtering those if specified, and creating u
 per title attaching the parsed URLs.
 
 To do:
-Major: Caching.
-       It seems cached_input functions only within a run, and RSS input plugin's all_entries
-       mechanism merely rejects candidate entries after encountering the last entry of the
-       previous run in the current list. By "injecting" failed entries at that point, or
-       appending them at the top of candidates, full parsing of failed and new entries might
-       be accomplished. An "injected" candidate would need to be removed from the backlog to
-       prevent it being called by any other plugin, as usual.
+Major: Re-parsing failed entries.
+       Rather than reproducing an entry which failed verbatim, I prefer to create a new one
+       from updated data. While any required data can be obtained from the existing backlog
+       plugin, the question is how to deal with the operation of that plugin itself. If the
+       entry is left in its database, backlog will reproduce it at the standard requests of
+       plugins such as series. Removing the entries from the database, however, negates
+       backlog's ability to persist an entry for a set and limited time.
 
 Considerations:
 Major: All other plugins will be unaware of the new values ('parse_urls' and 'parsed_urls').
@@ -52,6 +52,8 @@ class Parse_URLs(object):
         all_entries: no
     """
 
+    DEFAULT_ALL_ENTRIES = False
+
     schema = {
         'oneOf': [
             {'type': 'object',
@@ -60,7 +62,8 @@ class Parse_URLs(object):
                         'allOf': [{'$ref': '/schema/plugins?phase=input'}, {'maxProperties': 1, 'minProperties': 1}]
                     }},
                     'links_re': one_or_more({'type': 'string'}),
-                },
+
+                    'all_entries': {'type': 'boolean'},                },
                 'additionalProperties': False
              }
         ]
@@ -78,6 +81,7 @@ class Parse_URLs(object):
         :param task: Current task
         :return: List of pseudo entries created by inputs under `inputs` configuration
         """
+        cache = []
         entries = []
         entry_titles = set()
         entry_urls = set()
@@ -98,9 +102,9 @@ class Parse_URLs(object):
                     log.warning('Input %s did not return anything' % input_name)
                     continue
 
-                cache = task.simple_persistence.get('parse_urls_cache')
+                if not config.get('all_entries', self.DEFAULT_ALL_ENTRIES):
+                    cache = task.simple_persistence.get('parse_urls_cache')
                 failed = self.backlog.instance.get_injections(task)
-#                cache = []
 
                 # For each candidate,
                 for entry in candidate_entries:
