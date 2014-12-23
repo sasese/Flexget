@@ -21,13 +21,6 @@ provided by input plugins for URLs, filtering those if specified, and creating u
 per title attaching the parsed URLs.
 
 To do:
-Major: Re-parsing failed entries.
-       Rather than reproducing an entry which failed verbatim, I prefer to create a new one
-       from updated data. While any required data can be obtained from the existing backlog
-       plugin, the question is how to deal with the operation of that plugin itself. If the
-       entry is left in its database, backlog will reproduce it at the standard requests of
-       plugins such as series. Removing the entries from the database, however, negates
-       backlog's ability to persist an entry for a set and limited time.
 
 Considerations:
 Major: All other plugins will be unaware of the new values ('parse_urls' and 'parsed_urls').
@@ -68,25 +61,29 @@ class Parse_URLs(object):
         ]
     }
 
-    def __init__(self):
-        try:
-            self.backlog = plugin.get_plugin_by_name('backlog')
-        except plugin.DependencyError:
-            log.warning('Unable utilize backlog plugin, entries may slip trough parse_urls in some rare cases')
-
     def execute_inputs(self, config, task):
         """
         :param config: Parse_URLs config
         :param task: Current task
         :return: List of pseudo entries created by inputs under `inputs` configuration
         """
+
+        cache = []
+        if not config.get('all_entries', self.DEFAULT_ALL_ENTRIES):
+            for index, item in enumerate(config['inputs']):
+                cache += task.simple_persistence.get('parse_urls_cache_%s' % index, [])
+
         entries = []
-        entry_titles = set()
-        entry_urls = set()
+        entry_titles = list ()
+        entry_urls = list ()
 
         # Get candidate entries from plugins
-        for item in config['inputs']:
+        for index, item in enumerate(config['inputs']):
+
             for input_name, input_config in item.iteritems():
+
+                entry_titles_reference_point = list(entry_titles)
+
                 input = get_plugin_by_name(input_name)
                 if input.api_ver == 1:
                     raise PluginError('Plugin %s does not support API v2' % input_name)
@@ -100,55 +97,57 @@ class Parse_URLs(object):
                     log.warning('Input %s did not return anything' % input_name)
                     continue
 
-                if not config.get('all_entries', self.DEFAULT_ALL_ENTRIES):
-                    cache = task.simple_persistence.get('parse_urls_cache', [])
-                failed = self.backlog.instance.get_injections(task)
-
                 # Each candidate,
                 for entry in candidate_entries:
 
-                    # whose index page repeats that in a previous run, unless it failed,
-                    if entry['url'] not in cache or entry['url'] in failed:
+                    # whose title does not repeat that in a previous run,
+                    if entry['title'] not in cache:
 
-                        # or repeats that of a previous candidate in this run, should be rejected.
-                        if entry['url'] in entry_urls:
-                            log.verbose('Encountered a duplicate index URL. Rejecting this instance of %$.' % (entry['title']))
+                        # nor the index page of a candidate accepted as entry in this run,
+                        if entry['url'] not in entry_urls:
+
+                            # or its title, is accepted as an entry.
+                            if entry['title'] not in entry_titles:
+                                entry['parse_urls'] = [entry['url']]
+                                entries.append(entry)
+                                log.debug('ACCEPTED: %s' % (entry['title']))
+
+                                # Note its title and URL for comparison
+                                entry_titles.append(entry['title'])
+                                entry_urls.append(entry['url'])
+
+                            # Should a candidate's title repeat that of an entry,
+                            else:
+                                entry_title = entry['title']
+                                entry_url = entry['url']
+
+                                # look up the entry,
+                                for entry in entries:
+                                    if entry['title'] == entry_title:
+
+                                        # attach to it the index page of the candidate
+                                        entry['parse_urls'].append(entry_url)
+                                        entry_urls.append(entry_url)
+                                        log.verbose('Duplicate title. Folding it into existing entry and rejecting this instance of %s.' % entry_title)
+
+                                        # and reject the supernumerary
+                                        break
+                                    else: continue
+
+                        else:
+                            log.verbose('Duplicate index page. Rejecting this instance of %s.' % (entry['title']))
                             continue
 
-                        # If accepted, attach its index page separately,
-                        entry['parse_urls'] = [entry['url']]
-
-                        # so that in case of an identically named candidate later
-                        if entry['title'] in entry_titles:
-                            entry_title = entry['title']
-                            entry_url = entry['url']
-
-                            # its index page may be attached to the first candidate
-                            for entry in entries:
-                                if entry['title'] == entry_title:
-                                    entry['parse_urls'].append(entry_url)
-                                    entry_urls.add(entry_url)
-                                    log.verbose('Encountered another instance of %s. Folding it into the existing entry.' % entry_title)
-
-                                    # making the duplicate candidate superfluous
-                                    break
-                                else: continue
-
-                        # Keep the candidate
-                        else:
-                            entries.append(entry)
-
-                            # Note its title and URL for comparison
-                            entry_titles.add(entry['title'])
-                            entry_urls.add(entry['url'])
-
-                    # If the candidate is in the cache, note its URL for future runs
+                    # If the candidate is in the cache, maintain its title for future runs
                     else:
-                        entry_urls.add(entry['url'])
+                        log.trace('Recently parsed title. Rejecting %s' % (entry['title']))
+                        entry_titles.append(entry['title'])
 
-        # Save entry URLs for future runs, and complete execute_plugins
-        log.debug('Saving entry URLs for future runs.')
-        task.simple_persistence['parse_urls_cache'] = entry_urls
+                # Save plugin cache for future runs
+                log.debug('Saving %s (%s) cache for future runs.' % (input_name, index))
+                task.simple_persistence['parse_urls_cache_%s' % index] = list(set(entry_titles_reference_point) ^ set(entry_titles))
+
+        # Complete execute_inputs
         return entries
 
     def execute_parsing(self, task, config, entries): # added 'task' to accommodate html.py's requirements
@@ -163,7 +162,7 @@ class Parse_URLs(object):
             log.verbose('Parsing `%s` (%i of %i)' %
                         (entry['title'], index + 1, len(entries)))
 
-            # Create container for parsed URLs
+            # Create, or empty, the container for parsed URLs
             entry['parsed_urls'] = []
 
             # Parse each index page for URLs
@@ -190,14 +189,31 @@ class Parse_URLs(object):
 
         return entries
 
+    def execute_reparsing(self, task, entries):
+        """Reparse backlog entries"""
+
+        basic_entries = []
+        parse_entries = []
+
+        for entry in entries:
+            if entry ['parse_urls']:
+                parse_entries.append (entry)
+            else:
+                basic_entries.append (entry)
+
+        parse_entries = self.execute_parsing(task, task.config.get('parse_urls', {}), entries)
+        entries = parse_entries + basic_entries
+
+        return entries
+
     @cached('parsed_urls')
     def on_task_input(self, task, config):
         task.no_entries_ok = True
         entries = self.execute_inputs(config, task)
         if len(entries) == 0:
-            log.verbose('No new titles to parse.')
+            log.info('No new titles to parse.')
         else:
-            log.verbose('Parsing the URLs of %i titles ...' % len(entries))
+            log.info('Parsing %i titles ...' % len(entries))
         if len(entries) > 500:
             log.critical('Looks like your inputs in parse_urls configuration produced '
                          'over 500 entries, please reduce the amount!')
