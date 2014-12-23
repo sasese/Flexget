@@ -67,10 +67,23 @@ class InputBacklog(object):
 
     schema = {'type': 'string', 'format': 'interval'}
 
+    def __init__(self):
+
+        try:
+            self.parse_urls = plugin.get_plugin_by_name('parse_urls')
+        except plugin.DependencyError:
+            log.warning('Unable to utilize parse_urls plugin, entries may slip trough in some rare cases')
+
     @plugin.priority(-255)
     def on_task_input(self, task, config):
         # Get a list of entries to inject
         injections = self.get_injections(task)
+        if injections:
+            # Update any injections which originated in parse_urls
+            try:
+                injections = self.parse_urls.instance.execute_reparsing(task, injections)
+            except PluginError as e:
+                log.warning('Error during reparsing: %s' % e)
         # Take a snapshot of the entries' states after the input event in case we have to store them to backlog
         for entry in task.entries + injections:
             entry.take_snapshot('after_input')
