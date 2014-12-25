@@ -82,22 +82,26 @@ class InputBacklog(object):
             # Update any injections which originated in parse_urls
             try:
                 injections = self.parse_urls.instance.execute_reparsing(task, injections)
-            except PluginError as e:
+            except Exception as e:
                 log.warning('Error during reparsing: %s' % e)
         # Take a snapshot of the entries' states after the input event in case we have to store them to backlog
         for entry in task.entries + injections:
             entry.take_snapshot('after_input')
         if config:
             # If backlog is manually enabled for this task, learn the entries.
-            self.learn_backlog(task, config)
+            self.learn_backlog(task, config, task.entries + injections)
         # Return the entries from backlog that are not already in the task
         return injections
 
     def on_task_abort(self, task, config):
-        """Remember all entries until next execution when task gets aborted."""
+        """Remember entries until next execution when task gets aborted."""
         if task.entries:
-            log.debug('Remembering all entries to backlog because of task abort.')
-            self.learn_backlog(task)
+            if task.aborted_phase == 'output':
+                self.learn_backlog(task, config, task.accepted)
+                log.debug('Remembering accepted entries to backlog because of task abort.')
+            else:
+                self.learn_backlog(task, config, task.entries - task.rejected)
+                log.debug('Remembering all except rejected entries to backlog because of task abort.')
 
     def add_backlog(self, task, entry, amount=''):
         """Add single entry to task backlog
@@ -126,9 +130,9 @@ class InputBacklog(object):
             backlog_entry.expire = expire_time
             task.session.add(backlog_entry)
 
-    def learn_backlog(self, task, amount=''):
+    def learn_backlog(self, task, config, entries, amount=''):
         """Learn current entries into backlog. All task inputs must have been executed."""
-        for entry in task.entries:
+        for entry in entries:
             self.add_backlog(task, entry, amount)
 
     def get_injections(self, task):
